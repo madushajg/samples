@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: todos--mysql-db-data-vol-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1G
+  storageClassName: local-storage
+  volumeMode: Filesystem
+  volumeName: mysql-pv-volume
+status:
+  accessModes:
+    - ReadWriteOnce
+  capacity:
+    storage: 1Gi
+  phase: Bound
