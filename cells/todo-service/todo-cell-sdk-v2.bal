@@ -1,3 +1,4 @@
+
 //   Copyright (c) 2019, WSO2 Inc. (http://www.wso2.org) All Rights Reserved.
 //   Licensed under the Apache License, Version 2.0 (the "License");
 //   you may not use this file except in compliance with the License.
@@ -14,13 +15,10 @@
 // Composite file that wraps a todo micro service and mysql database.
 import celleryio/cellery;
 import ballerina/io;
+import ballerina/config;
 
 public function build(cellery:ImageName iName) returns error? {
     int mysqlPort = 3306;
-    string mysqlPassword = "root";
-
-    string mysqlScript = readFile("./mysql/init.sql");
-
     //Mysql database service which stores the todos that were added via the todos service
     cellery:Component mysqlComponent = {
         name: "mysql-db",
@@ -39,8 +37,18 @@ public function build(cellery:ImageName iName) returns error? {
         },
         volumes: {
             sqlconfig: {
+                path: "/docker-entrypoint-initdb.d",
+                readOnly: false,
+                volume:<cellery:SharedConfiguration>{
+                     name:"init-sql"
+                }
             },
             volumeClaim: {
+                path: "/var/lib/mysql",
+                readOnly: false,
+                volume:<cellery:K8sSharedPersistence>{
+                     name:"data-vol"
+                }
             }
         }
     };
@@ -50,7 +58,7 @@ public function build(cellery:ImageName iName) returns error? {
     cellery:Component todoServiceComponent = {
         name: "todos",
         source: {
-            image: "docker.io/mirage20/samples-todoapp-todos:latest"
+            image: "docker.io/wso2cellery/samples-todoapp-todos:latest-dev"
         },
         ingresses: {
             todo:  <cellery:HttpApiIngress>{
@@ -92,17 +100,22 @@ public function build(cellery:ImageName iName) returns error? {
             DATABASE_NAME: {
                 value: "todos_db"
             },
-            DATABASE_CREDENTIALS_PATH:{
+            DATABASE_CREDENTIALS_PATH: {
                 value: "/credentials"
+            }
+        },
+        volumes: {
+            secret: {
+                path: "/credentials",
+                readOnly: false,
+                volume:<cellery:SharedSecret>{
+                    name:"db-credentials"
+                }
             }
         },
         dependencies: {
             components: [mysqlComponent]
         }
-        volumes: {
-            secret: {
-            }
-        },
     };
 
     // Composite Initialization
@@ -119,14 +132,22 @@ public function run(cellery:ImageName iName, map<cellery:ImageName> instances, b
 returns (cellery:InstanceState[] | error?) {
     string mysqlScript = readFile("/Users/madushagunasekara/temp1003/samples/cells/todo-service/mysql/init.sql");
 
-    cellery:NonSharedSecret secret = {
-        name:"db-credentials",
-        data:{
-            username:"root",
-            password:"root"
+    cellery:NonSharedSecret mysqlCreds = {
+        name: "db-credentials",
+        data: {
+            username: "root",
+            password: "root"
         }
     };
-    check cellery:createSecret(secret);
+    check cellery:createSecret(mysqlCreds);
+
+    cellery:NonSharedConfiguration cm = {
+        name:"init-sql",
+        data:{
+           "init.sql":mysqlScript
+        }
+    };
+    check cellery:createConfiguration(cm);
 
     cellery:K8sNonSharedPersistence pvc = {
         name:"data-vol",
@@ -136,39 +157,7 @@ returns (cellery:InstanceState[] | error?) {
     };
     check cellery:createPersistenceClaim(pvc);
 
-    cellery:NonSharedConfiguration config = {
-                                     name:"init-sql",
-                                     data:{
-                                        "init.sql":mysqlScript
-                                     }
-                                 };
-    check cellery:createConfiguration(config);
-
     cellery:CellImage todoCell = check cellery:constructImage(untaint iName);
-    todoCell.components.mysql.volumes.sqlconfig = {
-                                                    path: "/docker-entrypoint-initdb.d",
-                                                     readOnly: false,
-                                                     volume: <cellery:SharedConfiguration> {
-                                                        name: "init-sql"
-                                                     }
-                                                 };
-
-    todoCell.components.mysql.volumes.volumeClaim = {
-                                                    path: "/var/lib/mysql",
-                                                    readOnly: false,
-                                                    volume:<cellery:K8sSharedPersistence>{
-                                                         name:"data-vol"
-                                                    }
-                                                 };
-
-    todoCell.components.todoService.volumes.secret = {
-                                                    path: "/credentials",
-                                                    readOnly: false,
-                                                    volume:<cellery:SharedSecret>{
-                                                        name:"db-credentials"
-                                                    }
-                                                  };
-
     return cellery:createInstance(todoCell, iName, instances, startDependencies, shareDependencies);
 }
 
@@ -181,6 +170,6 @@ function readFile(string filePath) returns (string) {
     if (readOutput is string) {
         return readOutput;
     } else {
-        return "Error: Unable to read file "+filePath;
+        return "Error: Unable to read file " + filePath;
     }
 }
