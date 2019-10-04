@@ -14,6 +14,7 @@
 // Composite file that wraps a todo micro service and mysql database.
 import celleryio/cellery;
 import ballerina/io;
+import ballerina/config;
 
 public function build(cellery:ImageName iName) returns error? {
     int mysqlPort = 3306;
@@ -79,6 +80,10 @@ public function build(cellery:ImageName iName) returns error? {
                           {
                               path: "/*",
                               method: "GET"
+                          },
+                          {
+                              path: "/*",
+                              method: "PUT"
                           }
                        ]
                    },
@@ -133,27 +138,22 @@ public function build(cellery:ImageName iName) returns error? {
 
 public function run(cellery:ImageName iName, map<cellery:ImageName> instances, boolean startDependencies, boolean shareDependencies)
 returns (cellery:InstanceState[] | error?) {
-    string mysqlScript = readFile("/Users/madushagunasekara/go_workspace/src/github.com/cellery-io/samples/cells/todo-service/mysql/init.sql");
+    string db_user = config:getAsString("MYSQL_USERNAME");
+    string db_pwd = config:getAsString("MYSQL_PASSWORD");
+    io:println(db_user);
+    io:println(db_pwd);
+    if (db_user == "" || db_pwd == "") {
+            panic error("MYSQL_USERNAME or MYSQL_PASSWORD not found in environment");
+    }
+
     cellery:NonSharedConfiguration config = {
                                      name:"init-sql",
                                      data:{
-                                        "init.sql":mysqlScript
+                                        username: db_user,
+                                        password: db_pwd
                                      }
                                  };
     error? e = cellery:createConfiguration(config);
     cellery:CellImage todoCell = check cellery:constructImage(untaint iName);
     return cellery:createInstance(todoCell, iName, instances, startDependencies, shareDependencies);
-}
-
-
-function readFile(string filePath) returns (string) {
-    io:ReadableByteChannel bchannel = io:openReadableFile(filePath);
-    io:ReadableCharacterChannel cChannel = new io:ReadableCharacterChannel(bchannel, "UTF-8");
-
-    var readOutput = cChannel.read(5000);
-    if (readOutput is string) {
-        return readOutput;
-    } else {
-        return "Error: Unable to read file "+filePath;
-    }
 }

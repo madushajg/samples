@@ -77,6 +77,10 @@ public function build(cellery:ImageName iName) returns error? {
                           {
                               path: "/*",
                               method: "GET"
+                          },
+                          {
+                              path: "/*",
+                              method: "PUT"
                           }
                        ]
                    },
